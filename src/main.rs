@@ -12,54 +12,78 @@ fn main() {
         args.push(arg);
     }
 
+    if args.len() == 0 {
+        println!("must argment");
+        return;
+    }
+
     let r = translate(&args[0]);
     match r {
         Ok(r) => println!("{}", r),
-        _ => println!("Not translated")
+        _ => println!("translate error")
     }
 }
 
 /**
  * translate specified word from english to japanese.
  */
-fn translate(word: &str) -> Result<String, Box<std::error::Error>> {
-    let s = search_word(word);
-    let word_id = parse(&(s.unwrap()));
-
-    // translate word.
-    let url = format!("http://public.dejizo.jp/NetDicV09.asmx/GetDicItemLite?Dic=EJdict&Item={}&Loc=&Prof=XHTML", word_id);
-    let mut r = reqwest::get(&url)?;
-    let mut b = String::new();
-    r.read_to_string(&mut b)?;
-    let translated = parse(&b);
-
-    Ok(translated.to_string())
+fn translate(word: &String) -> Result<String, String> {
+    _translate(&_search_id(&word)?)
 }
 
 /**
- * seach word section.
+ * seach word id.
  */
-fn search_word(word: &str) -> Result<String, Box<std::error::Error>> {
+fn _search_id(word: &String) -> Result<String, String> {
     let url = format!("http://public.dejizo.jp/NetDicV09.asmx/SearchDicItemLite?Dic=EJdict&Word={}&Scope=HEADWORD&Match=STARTWITH&Merge=AND&Prof=XHTML&PageSize=1&PageIndex=0", word);
-    let mut r = reqwest::get(&url)?;
+    let mut r =
+        match reqwest::get(&url) {
+            Ok(u) => u,
+            Err(_) => return Err("reqwest::get is error in search_word".to_string())
+        };
 
     // set getting xml.
     let mut b = String::new();
-    r.read_to_string(&mut b)?;
+    match r.read_to_string(&mut b) {
+        Ok(_) => {},
+        Err(_) => return Err("read_to_string is error in search_word".to_string())
+    };
 
-    Ok(b)
+    // parse item-id.
+    parse(&b).ok_or("parse is error".to_string())
+}
+
+/**
+ * process translate.
+ */
+fn _translate(word_id: &String) -> Result<String, String> {
+    let url = format!("http://public.dejizo.jp/NetDicV09.asmx/GetDicItemLite?Dic=EJdict&Item={}&Loc=&Prof=XHTML", word_id);
+    let mut r =
+        match reqwest::get(&url) {
+            Ok(u) => u,
+            Err(_) => return Err("reqwest::get is error in _translate".to_string())
+        };
+
+    let mut b = String::new();
+    match r.read_to_string(&mut b) {
+        Ok(_) => {},
+        Err(_) => return Err("read_to_string is error in _translate".to_string())
+    }
+
+    // parse item-id.
+    parse(&b).ok_or("parse is error".to_string())
 }
 
 /**
  * parse xml.
  */
-fn parse(str: &str) -> String {
+fn parse(str: &str) -> Option<String> {
     let mut reader = Reader::from_str(str);
     reader.trim_text(true);
     let mut buf = Vec::new();
 
     let mut pre_tag = "".to_string();
-    let mut content: String = "".to_string();
+    let mut content = None;
     loop {
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => {
@@ -67,7 +91,7 @@ fn parse(str: &str) -> String {
                 match &*tag {
                     // search item id.
                     "ItemID" =>{
-                        content = reader.read_text(e.name(), &mut Vec::new()).unwrap();
+                        content = Some(reader.read_text(e.name(), &mut Vec::new()).unwrap());
                         break
                     },
                     // search translated content.
@@ -77,7 +101,7 @@ fn parse(str: &str) -> String {
             },
             Ok(Event::Text(e)) => {
                 if pre_tag == "Body" {
-                    content = e.unescape_and_decode(&reader).unwrap();
+                    content = Some(e.unescape_and_decode(&reader).unwrap());
                     break
                 }
             },
@@ -88,3 +112,4 @@ fn parse(str: &str) -> String {
     }
     content
 }
+
