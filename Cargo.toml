@@ -5,5 +5,4 @@ authors = ["takayuki tanaka <takayuki.1981.0317@gmail.com>"]
 
 [dependencies]
 reqwest = "0.8.6"
-error-chain = "0.11.0"
 quick-xml = "0.12.1"
